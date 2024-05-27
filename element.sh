@@ -5,11 +5,25 @@ PSQL="psql --username=freecodecamp --dbname=periodic_table -t --no-align -c"
 
 # Function to fetch and display element information
 fetch_element_info() {
-  local QUERY_RESULT=$($PSQL "SELECT elements.atomic_number, elements.name, elements.symbol, types.type, properties.atomic_mass, properties.melting_point_celsius, properties.boiling_point_celsius
-                             FROM elements
-                             INNER JOIN properties USING(atomic_number)
-                             INNER JOIN types ON properties.type_id = types.type_id
-                             WHERE elements.atomic_number=$1 OR elements.symbol='$1' OR elements.name='$1'")
+  local INPUT=$1
+  local QUERY
+
+  # Check if the input is a number (atomic number) or a string (symbol or name)
+  if [[ $INPUT =~ ^[0-9]+$ ]]; then
+    QUERY="SELECT elements.atomic_number, elements.name, elements.symbol, types.type, properties.atomic_mass, properties.melting_point_celsius, properties.boiling_point_celsius
+           FROM elements
+           INNER JOIN properties USING(atomic_number)
+           INNER JOIN types ON properties.type_id = types.type_id
+           WHERE elements.atomic_number=$INPUT"
+  else
+    QUERY="SELECT elements.atomic_number, elements.name, elements.symbol, types.type, properties.atomic_mass, properties.melting_point_celsius, properties.boiling_point_celsius
+           FROM elements
+           INNER JOIN properties USING(atomic_number)
+           INNER JOIN types ON properties.type_id = types.type_id
+           WHERE elements.symbol='$INPUT' OR elements.name='$INPUT'"
+  fi
+
+  local QUERY_RESULT=$($PSQL "$QUERY")
 
   if [[ -z $QUERY_RESULT ]]; then
     echo "I could not find that element in the database."
