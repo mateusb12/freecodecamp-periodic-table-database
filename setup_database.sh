@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PSQL command to interact with the database
+# Interact with the database without pager
 PSQL="psql --username=freecodecamp --dbname=periodic_table -t --no-align -c"
 
-# Check if the necessary columns exist before altering them
+# Alter the columns only if they exist
 if [[ $($PSQL "\d properties" | grep -c "atomic_mass") -eq 0 ]]; then
   if [[ $($PSQL "\d properties" | grep -c "weight") -gt 0 ]]; then
     $PSQL "ALTER TABLE properties RENAME COLUMN weight TO atomic_mass;"
@@ -22,7 +22,7 @@ if [[ $($PSQL "\d properties" | grep -c "boiling_point_celsius") -eq 0 ]]; then
   fi
 fi
 
-# Adding NOT NULL constraints if they don't exist
+# Add NULL constraints only if they don't exist
 if [[ $($PSQL "\d properties" | grep "melting_point_celsius" | grep -c "not null") -eq 0 ]]; then
   $PSQL "ALTER TABLE properties ALTER COLUMN melting_point_celsius SET NOT NULL;"
 fi
@@ -31,7 +31,7 @@ if [[ $($PSQL "\d properties" | grep "boiling_point_celsius" | grep -c "not null
   $PSQL "ALTER TABLE properties ALTER COLUMN boiling_point_celsius SET NOT NULL;"
 fi
 
-# Adding UNIQUE constraints if they don't exist
+# Add UNIQUE constraints only if they don't exist
 if [[ $($PSQL "\d elements" | grep -c "unique_symbol") -eq 0 ]]; then
   $PSQL "ALTER TABLE elements ADD CONSTRAINT unique_symbol UNIQUE (symbol);"
 fi
@@ -40,7 +40,7 @@ if [[ $($PSQL "\d elements" | grep -c "unique_name") -eq 0 ]]; then
   $PSQL "ALTER TABLE elements ADD CONSTRAINT unique_name UNIQUE (name);"
 fi
 
-# Adding NOT NULL constraints if they don't exist
+# Add NOT NULL constraints only if they don't exist
 if [[ $($PSQL "\d elements" | grep "symbol" | grep -c "not null") -eq 0 ]]; then
   $PSQL "ALTER TABLE elements ALTER COLUMN symbol SET NOT NULL;"
 fi
@@ -49,36 +49,36 @@ if [[ $($PSQL "\d elements" | grep "name" | grep -c "not null") -eq 0 ]]; then
   $PSQL "ALTER TABLE elements ALTER COLUMN name SET NOT NULL;"
 fi
 
-# Adding foreign key if it doesn't exist
+# Adding foreign key  only if it doesn't exist
 if [[ $($PSQL "SELECT conname FROM pg_constraint WHERE conname='fk_atomic_number';" | wc -l) -eq 0 ]]; then
   $PSQL "ALTER TABLE properties ADD CONSTRAINT fk_atomic_number FOREIGN KEY (atomic_number) REFERENCES elements (atomic_number);"
 fi
 
-# Creating types table if it doesn't exist
+# Create type tables
 $PSQL "CREATE TABLE IF NOT EXISTS types (
   type_id SERIAL PRIMARY KEY,
   type VARCHAR NOT NULL
 );"
 
-# Inserting rows into types table if they don't exist
+# Populate type table
 if [[ $($PSQL "SELECT COUNT(*) FROM types;" | xargs) -eq 0 ]]; then
   $PSQL "INSERT INTO types (type) VALUES ('metal'), ('nonmetal'), ('metalloid');"
 fi
 
-# Adding type_id column to properties table if it doesn't exist
+# Add type_id field
 if [[ $($PSQL "\d properties" | grep -c "type_id") -eq 0 ]]; then
   $PSQL "ALTER TABLE properties ADD COLUMN type_id INT NOT NULL DEFAULT 1;"
 fi
 
-# Adding foreign key constraint to properties table if it doesn't exist
+# Add foreign key constraint to properties
 if [[ $($PSQL "SELECT conname FROM pg_constraint WHERE conname='fk_type_id';" | wc -l) -eq 0 ]]; then
   $PSQL "ALTER TABLE properties ADD CONSTRAINT fk_type_id FOREIGN KEY (type_id) REFERENCES types (type_id);"
 fi
 
-# Ensuring symbol values are capitalized in elements table
+# Ensuring capitalized symbol values
 $PSQL "UPDATE elements SET symbol = INITCAP(symbol);"
 
-# Adding elements with atomic numbers 9 and 10 if they don't exist
+# Add elements with atomic numbers 9 and 10 if they don't exist
 if [[ $($PSQL "SELECT COUNT(*) FROM elements WHERE atomic_number=9;" | xargs) -eq 0 ]]; then
   $PSQL "INSERT INTO elements (atomic_number, name, symbol) VALUES (9, 'Fluorine', 'F');"
   $PSQL "INSERT INTO properties (atomic_number, atomic_mass, melting_point_celsius, boiling_point_celsius, type_id) VALUES (9, 18.998, -220, -188.1, (SELECT type_id FROM types WHERE type='nonmetal'));"
@@ -97,21 +97,30 @@ do
   $PSQL "UPDATE properties SET atomic_mass=$atomic_mass WHERE atomic_number=$atomic_number;"
 done < atomic_mass.txt
 
-# Debug: Print atomic masses before and after stripping trailing zeros
+# Print atomic masses before stripping trailing zeros
 echo "Atomic masses before removing trailing zeros:"
 $PSQL "SELECT atomic_number, atomic_mass FROM properties;" | while IFS="|" read -r atomic_number atomic_mass; do
   echo "Atomic number: $atomic_number, Atomic mass: $atomic_mass"
 done
 
-# Convert atomic_mass to DECIMAL, strip trailing zeros
+# Convert atomic_mass to DECIMAL
 $PSQL "ALTER TABLE properties ALTER COLUMN atomic_mass TYPE DECIMAL;"
 $PSQL "UPDATE properties SET atomic_mass = TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM atomic_mass::TEXT))::DECIMAL;"
 
-# Debug: Print atomic masses after removing trailing zeros
+# Print atomic masses after removing trailing zeros
 echo "Atomic masses after removing trailing zeros:"
 $PSQL "SELECT atomic_number, atomic_mass FROM properties;" | while IFS="|" read -r atomic_number atomic_mass; do
   echo "Atomic number: $atomic_number, Atomic mass: $atomic_mass"
 done
+
+# Delete non-existent element with atomic_number 1000 from both tables
+$PSQL "DELETE FROM properties WHERE atomic_number=1000;"
+$PSQL "DELETE FROM elements WHERE atomic_number=1000;"
+
+# Drop the type column from properties table if it exists
+if [[ $($PSQL "\d properties" | grep -c "type") -gt 0 ]]; then
+  $PSQL "ALTER TABLE properties DROP COLUMN type;"
+fi
 
 # Get a list of all tables
 TABLES=$($PSQL "SELECT tablename FROM pg_tables WHERE schemaname='public'")
